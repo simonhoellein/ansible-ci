@@ -1,0 +1,15 @@
+---
+- name: Update all packages except newrelic-infra on Linux servers
+  hosts: all
+  become: yes
+  tasks:
+    - name: Downgrade or hold newrelic-infra package to its current version
+      package:
+        name: "newrelic-infra"
+        state: present
+
+    - name: Update all packages to the latest version
+      package:
+        name: "*"
+        state: latest
+
