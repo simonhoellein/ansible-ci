@@ -1,5 +1,5 @@
 ---
-- name: Check pending reboots
+- name: Check pending reboots on Ubuntu hosts
   hosts: all
   gather_facts: no
   become: yes
@@ -8,48 +8,56 @@
     reboot_flag_file: /var/run/reboot-required
 
   tasks:
-    - name: Verify reboot-required flag file presence
+    - name: Check if reboot is required (Ubuntu)
       stat:
         path: "{{ reboot_flag_file }}"
       register: reboot_flag
 
-    - name: Set per-host reboot status fact
+    - name: Set per-host reboot status
       set_fact:
         reboot_required: "{{ reboot_flag.stat.exists | default(false) }}"
 
-    - name: Show per-host status (optional verbose)
-      debug:
-        msg: "Reboot required: {{ reboot_required }}"
-      when: reboot_required is defined
-
-    - name: Aggregate hosts requiring reboot
+    - name: Build table rows per host
       set_fact:
-        hosts_requiring_reboot: >-
+        reboot_table_rows: >-
           {{
-            (hosts_requiring_reboot | default([]))
-            + ([inventory_hostname] if reboot_required else [])
+            (reboot_table_rows | default([]))
+            + [ { 'Host': inventory_hostname, 'RebootRequired': reboot_required | ternary('Yes', 'No') } ]
           }}
 
-    - name: Print summary on one controller host
+    - name: Prepare Markdown table header and rows on controller
       run_once: true
       delegate_to: localhost
       vars:
-        # Build a list of hosts from the play's hosts that set reboot_required = true
-        needing_reboot: >-
+        header: "| Host | Reboot Required |"
+        sep:    "|------|-----------------|"
+        rows: >-
           {{
-            groups[play_hosts[0] | default(inventory_hostname)]
-            if false else
-            (
-              hostvars
-              | dict2items
-              | selectattr('value.reboot_required', 'defined')
-              | selectattr('value.reboot_required', 'equalto', true)
-              | map(attribute='key')
-              | list
-            )
+            play_hosts
+            | map('extract', hostvars)
+            | map('extract', 'reboot_required')
+            | list
+          }}
+        # Build a sorted list of hosts with their status from hostvars
+        table_lines: >-
+          {{
+            play_hosts
+            | map('extract', hostvars)
+            | list
+            | map('combine', [{'name': item.key}] )
           }}
       debug:
         msg: >-
-          SUMMARY: The following hosts require reboot:
-          {{ (needing_reboot | length > 0)
-              | ternary(needing_reboot | join(', '), 'None') }}
+          {{ header }}
+          {{ sep }}
+          {%- for h in play_hosts | sort %}
+          | {{ h }} | {{ (hostvars[h].reboot_required | default(false)) | ternary('Yes','No') }} |
+          {%- endfor %}
+
+    - name: Print summary filtered to only hosts that require reboot (optional)
+      run_once: true
+      delegate_to: localhost
+      debug:
+        msg: >-
+          The following table lists all hosts. "Yes" means a reboot is required.
+          Only "Yes" rows indicate action needed.
