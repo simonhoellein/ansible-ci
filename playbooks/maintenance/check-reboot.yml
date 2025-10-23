@@ -71,13 +71,13 @@
           {{
             play_hosts
             | select('in', play_hosts)
-            | select('equalto', None)  # dummy to keep jinja happy; replaced by below block
+            | select('equalto', None)
           }}
         needing_hosts: >-
           {{
             play_hosts
             | sort
-            | selectattr('___dummy', 'defined')  # dummy, replaced by below again
+            | selectattr('___dummy', 'defined')
           }}
       debug:
         msg: >-
