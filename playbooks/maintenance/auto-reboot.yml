@@ -1,0 +1,42 @@
+---
+- name: Check and reboot servers with pending reboots
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Check for pending reboot
+      shell: test -f /var/run/reboot-required
+      register: reboot_needed
+      ignore_errors: yes
+
+    - name: Set reboot fact
+      set_fact:
+        needs_reboot: "{{ reboot_needed.rc == 0 }}"
+
+    - name: Reboot if needed
+      block:
+        - name: Reboot the server
+          shell: shutdown -r now "Reboot initiated by Ansible"
+          async: 1
+          poll: 0
+          when: needs_reboot
+
+        - name: Wait for server to go down
+          local_action:
+            module: wait_for
+            host: "{{ ansible_host }}"
+            state: stopped
+            timeout: 300
+          when: needs_reboot
+
+        - name: Wait for server to come back up
+          local_action:
+            module: wait_for
+            host: "{{ ansible_host }}"
+            port: 22
+            state: started
+            delay: 10
+            timeout: 300
+          when: needs_reboot
+      when: needs_reboot
+      serial: 1
