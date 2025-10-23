@@ -1,0 +1,54 @@
+---
+- name: Sudo / become test
+  hosts: all
+  gather_facts: no
+  vars:
+    test_file: /root/ansible_sudo_test.txt
+
+  tasks:
+    - name: Show connection user (no become)
+      ansible.builtin.command: whoami
+      register: whoami_nobecome
+      changed_when: false
+
+    - name: Debug - user we connected as
+      ansible.builtin.debug:
+        msg: "Connected user (no become): {{ whoami_nobecome.stdout }}"
+
+    - name: Show whoami with become (should be root)
+      ansible.builtin.command: whoami
+      become: yes
+      register: whoami_become
+      changed_when: false
+
+    - name: Debug - effective user with become
+      ansible.builtin.debug:
+        msg: "Effective user with become: {{ whoami_become.stdout }}"
+
+    - name: Create a test file in /root using become (this verifies write permission)
+      ansible.builtin.copy:
+        content: |
+          ansible sudo test
+          created_by: {{ ansible_user | default('unknown') }}
+        dest: "{{ test_file }}"
+        owner: root
+        group: root
+        mode: '0644'
+      become: yes
+      register: copy_result
+
+    - name: Check the test file exists and ownership
+      ansible.builtin.stat:
+        path: "{{ test_file }}"
+      register: stat_result
+      changed_when: false
+
+    - name: Show stat of test file
+      ansible.builtin.debug:
+        var: stat_result.stat
+
+    - name: Clean up test file (optional)
+      ansible.builtin.file:
+        path: "{{ test_file }}"
+        state: absent
+      become: yes
