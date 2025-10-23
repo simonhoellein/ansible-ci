@@ -1,50 +1,55 @@
 ---
-- name: Check pending reboot on Ubuntu hosts
+- name: Check pending reboots
   hosts: all
-  gather_facts: false
+  gather_facts: no
+  become: yes
+
+  vars:
+    reboot_flag_file: /var/run/reboot-required
 
   tasks:
-    - name: Check if /var/run/reboot-required exists
-      ansible.builtin.stat:
-        path: /var/run/reboot-required
+    - name: Verify reboot-required flag file presence
+      stat:
+        path: "{{ reboot_flag_file }}"
       register: reboot_flag
 
-    - name: Set reboot_pending fact
-      ansible.builtin.set_fact:
-        reboot_pending: "{{ reboot_flag.stat.exists | default(false) }}"
+    - name: Set per-host reboot status fact
+      set_fact:
+        reboot_required: "{{ reboot_flag.stat.exists | default(false) }}"
 
-- name: Summarize hosts with pending reboot
-  hosts: all
-  gather_facts: false
-  tasks:
-    - name: Add host to pending list if reboot needed
-      ansible.builtin.add_host:
-        name: "{{ inventory_hostname }}"
-        groups: reboot_pending_group
-      when: reboot_pending | default(false)
+    - name: Show per-host status (optional verbose)
+      debug:
+        msg: "Reboot required: {{ reboot_required }}"
+      when: reboot_required is defined
 
-- name: Report summary
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: Build list of pending reboot hosts
-      ansible.builtin.set_fact:
-        pending_hosts: "{{ groups['reboot_pending_group'] | default([]) }}"
+    - name: Aggregate hosts requiring reboot
+      set_fact:
+        hosts_requiring_reboot: >-
+          {{
+            (hosts_requiring_reboot | default([]))
+            + ([inventory_hostname] if reboot_required else [])
+          }}
 
-    - name: Show summary
-      ansible.builtin.debug:
-        msg: |
-          Reboot pending on the following hosts:
-          {% if pending_hosts | length > 0 %}
-          {% for h in pending_hosts %}
-          - {{ h }}
-          {% endfor %}
-          {% else %}
-          None. All hosts are clear.
-          {% endif %}
-
-    # Optional: Fail job if any host needs a reboot
-    # - name: Fail when any host needs a reboot
-    #   ansible.builtin.fail:
-    #     msg: "One or more hosts require a reboot: {{ pending_hosts | join(', ') }}"
-    #   when: pending_hosts | length > 0
+    - name: Print summary on one controller host
+      run_once: true
+      delegate_to: localhost
+      vars:
+        # Build a list of hosts from the play's hosts that set reboot_required = true
+        needing_reboot: >-
+          {{
+            groups[play_hosts[0] | default(inventory_hostname)]
+            if false else
+            (
+              hostvars
+              | dict2items
+              | selectattr('value.reboot_required', 'defined')
+              | selectattr('value.reboot_required', 'equalto', true)
+              | map(attribute='key')
+              | list
+            )
+          }}
+      debug:
+        msg: >-
+          SUMMARY: The following hosts require reboot:
+          {{ (needing_reboot | length > 0)
+              | ternary(needing_reboot | join(', '), 'None') }}
