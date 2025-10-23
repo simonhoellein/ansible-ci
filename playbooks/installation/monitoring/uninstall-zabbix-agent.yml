@@ -1,0 +1,48 @@
+---
+- name: Uninstall Zabbix Agent
+  hosts: all
+  become: yes
+  tasks:
+    
+    - name: Stop Zabbix services
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - zabbix-agent
+        
+    - name: Remove Zabbix packages
+      apt:
+        name:
+          - zabbix-agent
+        state: absent
+        purge: yes
+        
+    - name: Remove Zabbix apt sources list
+      file:
+        path: /etc/apt/sources.list.d/zabbix.list
+        state: absent
+
+    - name: Update apt repositories
+      apt:
+        update_cache: yes
+        
+    - name: Remove Zabbix user
+      user:
+        name: zabbix
+        state: absent
+        remove: yes
+
+    - name: Remove Zabbix group
+      group:
+        name: zabbix
+        state: absent
+
+    - name: Remove Zabbix configuration files
+      file:
+        path: "{{ item }}"
+        state: absent
+        recurse: yes
+      loop:
+        - /etc/zabbix/
+        - /usr/share/zabbix/
