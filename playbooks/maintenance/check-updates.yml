@@ -1,0 +1,68 @@
+---
+- name: Check available updates on Ubuntu servers
+  hosts: all
+  gather_facts: yes
+  become: yes
+
+  vars:
+    apt_cache_valid_time: 3600  # seconds to reuse apt cache metadata
+
+  pre_tasks:
+    - name: Ensure target is Ubuntu
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.os_family == "Debian"
+          - ansible_facts.distribution | lower == "ubuntu"
+        fail_msg: "This playbook supports Ubuntu only."
+
+    - name: Update apt cache (metadata only)
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: "{{ apt_cache_valid_time }}"
+      changed_when: false
+
+  tasks:
+    - name: Check upgrade info (list of packages that would be upgraded)
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: no
+      check_mode: yes
+      register: upgrade_check
+
+    - name: Parse list of upgradable packages
+      ansible.builtin.set_fact:
+        upgradable_packages: "{{ upgrade_check.packages | default({}) | dict2items }}"
+      # upgrade_check.packages is available in newer Ansible; fallback handled below
+      when: upgrade_check.packages is defined
+
+    - name: Fallback - build list from stdout if packages key not present
+      ansible.builtin.set_fact:
+        upgradable_packages: >-
+          {{
+            (upgrade_check.stdout_lines | default([]))
+            | select('match', '^[^\\s]+\\s')
+            | list
+          }}
+      when: upgrade_check.packages is not defined
+
+    - name: Count updates
+      ansible.builtin.set_fact:
+        updates_count: >-
+          {{
+            (upgradable_packages | length)
+            if (upgradable_packages is defined)
+            else 0
+          }}
+
+    - name: Show summary
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ inventory_hostname }}"
+          - "Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+          - "Available updates: {{ updates_count }}"
+          - >-
+            {{
+              (upgradable_packages | map('attr', 'key') | list)
+              if (upgradable_packages is defined and upgradable_packages | length > 0 and upgradable_packages[0] is mapping)
+              else (upgradable_packages | list)
+            }}
