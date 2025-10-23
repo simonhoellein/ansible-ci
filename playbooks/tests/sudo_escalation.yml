@@ -42,6 +42,7 @@
         path: "{{ test_file }}"
       register: stat_result
       changed_when: false
+      become: yes
 
     - name: Show stat of test file
       ansible.builtin.debug:
