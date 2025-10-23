@@ -1,15 +1,32 @@
 ---
-- name: Update all packages except newrelic-infra on Linux servers
+- name: Update all system packages except newrelic-infra
   hosts: all
   become: yes
-  tasks:
-    - name: Downgrade or hold newrelic-infra package to its current version
-      package:
-        name: "newrelic-infra"
-        state: present
+  gather_facts: yes
 
-    - name: Update all packages to the latest version
-      package:
+  tasks:
+    - name: Hold back newrelic-infra on Debian-based systems
+      when: ansible_facts.os_family == "Debian"
+      ansible.builtin.command: apt-mark hold newrelic-infra
+      register: hold_result
+      changed_when: "'marked' in hold_result.stdout"
+
+    - name: Update all packages on Debian-based systems
+      when: ansible_facts.os_family == "Debian"
+      ansible.builtin.apt:
         name: "*"
         state: latest
+        update_cache: yes
 
+    - name: Unhold newrelic-infra on Debian-based systems
+      when: ansible_facts.os_family == "Debian"
+      ansible.builtin.command: apt-mark unhold newrelic-infra
+      register: unhold_result
+      changed_when: "'unmarked' in unhold_result.stdout"
+
+    - name: Update all packages on RHEL-based systems except newrelic-infra
+      when: ansible_facts.os_family in ["RedHat", "Rocky", "AlmaLinux", "CentOS", "Fedora"]
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+        exclude: newrelic-infra
