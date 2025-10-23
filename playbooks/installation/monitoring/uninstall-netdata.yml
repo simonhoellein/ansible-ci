@@ -1,6 +1,6 @@
 ---
 - name: Uninstall Netdata
-  hosts: netdata
+  hosts: all
   become: yes
   tasks:
     - name: Uninstall Netdata
