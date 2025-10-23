@@ -13,11 +13,6 @@
       ansible.builtin.set_fact:
         reboot_pending: "{{ reboot_flag.stat.exists | default(false) }}"
 
-    - name: Per-host status (optional)
-      ansible.builtin.debug:
-        msg: "Host {{ inventory_hostname }} reboot pending: {{ reboot_pending }}"
-      when: ansible_verbosity | default(0) | int > 0
-
 - name: Summarize hosts with pending reboot
   hosts: all
   gather_facts: false
