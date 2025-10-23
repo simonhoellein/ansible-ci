@@ -3,6 +3,7 @@
   hosts: all
   become: yes
   serial: 1
+  gather_facts: no
   tasks:
 
     - name: Check for pending reboot
@@ -22,24 +23,23 @@
           poll: 0
           when: needs_reboot
 
-        - name: Wait for server to lose connectivity
-          local_action:
-            module: wait_for
-            host: "{{ inventory_hostname }}"
-            port: 22
-            state: drained
-            timeout: 300
+        - name: Wait for server to go down
+          local_action: wait_for
+          delay: 20
+          timeout: 300
+          host: "{{ inventory_hostname }}"
+          port: 22
+          state: drained
           delegate_to: localhost
           when: needs_reboot
 
         - name: Wait for server to come back up
-          local_action:
-            module: wait_for
-            host: "{{ inventory_hostname }}"
-            port: 22
-            state: started
-            delay: 10
-            timeout: 300
+          local_action: wait_for
+          delay: 10
+          timeout: 300
+          host: "{{ inventory_hostname }}"
+          port: 22
+          state: started
           delegate_to: localhost
           when: needs_reboot
       when: needs_reboot
