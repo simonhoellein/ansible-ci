@@ -23,20 +23,20 @@
           when: needs_reboot
 
         - name: Wait for server to go down
-          local_action:
-            module: wait_for
-            host: "{{ ansible_host }}"
-            state: stopped
+          wait_for_connection:
+            delay: 10
             timeout: 300
+            state: absent
+          delegate_to: localhost
           when: needs_reboot
 
         - name: Wait for server to come back up
-          local_action:
-            module: wait_for
-            host: "{{ ansible_host }}"
+          wait_for:
+            host: "{{ inventory_hostname }}"
             port: 22
             state: started
             delay: 10
             timeout: 300
+          delegate_to: localhost
           when: needs_reboot
       when: needs_reboot
