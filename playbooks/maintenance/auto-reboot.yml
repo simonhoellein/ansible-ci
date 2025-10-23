@@ -2,6 +2,7 @@
 - name: Check and reboot servers with pending reboots
   hosts: all
   become: yes
+  serial: 1
   tasks:
 
     - name: Check for pending reboot
@@ -39,4 +40,3 @@
             timeout: 300
           when: needs_reboot
       when: needs_reboot
-      serial: 1
