@@ -42,7 +42,6 @@
       file:
         path: "{{ item }}"
         state: absent
-        recurse: yes
       loop:
         - /etc/zabbix/
         - /usr/share/zabbix/
