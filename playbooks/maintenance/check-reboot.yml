@@ -18,20 +18,35 @@
       run_once: true
       delegate_to: localhost
       vars:
-        reboot_hosts: "{{ play_hosts | select('in', groups['all']) | list }}"
-        reboot_required_hosts: "{{ reboot_hosts | select('match', '.*') | select('equalto', true, attribute='hostvars[.].reboot_required') | list }}"
-        reboot_not_required_hosts: "{{ reboot_hosts | reject('equalto', true, attribute='hostvars[.].reboot_required') | list }}"
+        reboot_required_hosts: >-
+          {{
+            play_hosts
+            | selectattr('hostvars[.].reboot_required', 'defined')
+            | select('extract', hostvars)
+            | selectattr('reboot_required', 'equalto', true)
+            | map(attribute='inventory_hostname')
+            | list
+          }}
+        reboot_not_required_hosts: >-
+          {{
+            play_hosts
+            | selectattr('hostvars[.].reboot_required', 'defined')
+            | select('extract', hostvars)
+            | rejectattr('reboot_required', 'equalto', true)
+            | map(attribute='inventory_hostname')
+            | list
+          }}
       block:
         - name: Show hosts that need reboot
           debug:
             msg: >-
               ⚠️  Reboot Required: {{
-                reboot_required_hosts | default([]) | join(', ') if reboot_required_hosts else 'none'
+                reboot_required_hosts | join(', ') if reboot_required_hosts else 'none'
               }}
 
         - name: Show hosts that do NOT need reboot
           debug:
             msg: >-
               ✅ No Reboot Required: {{
-                reboot_not_required_hosts | default([]) | join(', ') if reboot_not_required_hosts else 'none'
+                reboot_not_required_hosts | join(', ') if reboot_not_required_hosts else 'none'
               }}
