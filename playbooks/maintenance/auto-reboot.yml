@@ -22,16 +22,19 @@
           poll: 0
           when: needs_reboot
 
-        - name: Wait for server to go down
-          wait_for_connection:
-            delay: 10
+        - name: Wait for server to lose connectivity
+          local_action:
+            module: wait_for
+            host: "{{ inventory_hostname }}"
+            port: 22
+            state: drained
             timeout: 300
-            state: absent
           delegate_to: localhost
           when: needs_reboot
 
         - name: Wait for server to come back up
-          wait_for:
+          local_action:
+            module: wait_for
             host: "{{ inventory_hostname }}"
             port: 22
             state: started
