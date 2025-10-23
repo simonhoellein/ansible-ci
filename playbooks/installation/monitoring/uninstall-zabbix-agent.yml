@@ -1,6 +1,6 @@
 ---
 - name: Uninstall Zabbix Agent
-  hosts: your_target_hosts
+  hosts: all
   become: yes  # To execute commands as a superuser
   tasks:
     
