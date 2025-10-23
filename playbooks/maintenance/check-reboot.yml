@@ -13,10 +13,10 @@
       ansible.builtin.set_fact:
         reboot_pending: "{{ reboot_flag.stat.exists | default(false) }}"
 
-    - name: Per-host status (optional for debugging)
+    - name: Per-host status (optional)
       ansible.builtin.debug:
         msg: "Host {{ inventory_hostname }} reboot pending: {{ reboot_pending }}"
-      verbosity: 1
+      when: ansible_verbosity | default(0) | int > 0
 
 - name: Summarize hosts with pending reboot
   hosts: all
@@ -48,7 +48,7 @@
           None. All hosts are clear.
           {% endif %}
 
-    # Optional: Fail job if any host needs reboot (useful for gating)
+    # Optional: Fail job if any host needs a reboot
     # - name: Fail when any host needs a reboot
     #   ansible.builtin.fail:
     #     msg: "One or more hosts require a reboot: {{ pending_hosts | join(', ') }}"
