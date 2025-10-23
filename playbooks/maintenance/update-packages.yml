@@ -1,32 +1,40 @@
 ---
-- name: Update all system packages except newrelic-infra
+- name: Update all system packages except newrelic-infra (Ubuntu only)
   hosts: all
   become: yes
   gather_facts: yes
 
   tasks:
-    - name: Hold back newrelic-infra on Debian-based systems
-      when: ansible_facts.os_family == "Debian"
-      ansible.builtin.command: apt-mark hold newrelic-infra
-      register: hold_result
-      changed_when: "'marked' in hold_result.stdout"
+    - name: Check if newrelic-infra is installed
+      ansible.builtin.shell: |
+        dpkg-query -W -f='${Status}' newrelic-infra 2>/dev/null | grep -q "install ok installed"
+      register: newrelic_installed
+      ignore_errors: yes
+      changed_when: false
 
-    - name: Update all packages on Debian-based systems
-      when: ansible_facts.os_family == "Debian"
+    - name: Hold newrelic-infra (if installed)
+      ansible.builtin.command: apt-mark hold newrelic-infra
+      when: newrelic_installed.rc == 0
+      become: yes
+      register: hold_result
+      changed_when: "'held back' in hold_result.stdout or hold_result.rc == 0"
+      ignore_errors: yes
+
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: yes
+      become: yes
+
+    - name: Upgrade all packages except newrelic-infra
       ansible.builtin.apt:
         name: "*"
         state: latest
-        update_cache: yes
+      become: yes
 
-    - name: Unhold newrelic-infra on Debian-based systems
-      when: ansible_facts.os_family == "Debian"
+    - name: Unhold newrelic-infra (if it was held)
       ansible.builtin.command: apt-mark unhold newrelic-infra
+      when: newrelic_installed.rc == 0
+      become: yes
       register: unhold_result
-      changed_when: "'unmarked' in unhold_result.stdout"
-
-    - name: Update all packages on RHEL-based systems except newrelic-infra
-      when: ansible_facts.os_family in ["RedHat", "Rocky", "AlmaLinux", "CentOS", "Fedora"]
-      ansible.builtin.yum:
-        name: "*"
-        state: latest
-        exclude: newrelic-infra
+      changed_when: "'unhold' in unhold_result.stdout or unhold_result.rc == 0"
+      ignore_errors: yes
