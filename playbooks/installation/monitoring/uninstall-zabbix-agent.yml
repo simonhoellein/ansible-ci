@@ -1,47 +1,70 @@
 ---
 - name: Uninstall Zabbix Agent
-  hosts: all
-  become: yes
+  hosts: your_target_hosts
+  become: yes  # To execute commands as a superuser
   tasks:
     
+    - name: Check if Zabbix agent is installed
+      package:
+        name: zabbix-agent
+        state: present
+      register: zabbix_agent_installed
+      ignore_errors: yes   # Ignore errors if the package is not present
+
+    - name: Debug | Zabbix Agent Installed Check
+      debug:
+        msg: "Zabbix Agent is not installed, skipping uninstallation tasks."
+      when: zabbix_agent_installed is failed
+
     - name: Stop Zabbix services
       systemd:
         name: "{{ item }}"
         state: stopped
       loop:
+        - zabbix-server
         - zabbix-agent
-        
+        - zabbix-frontend-php
+      when: zabbix_agent_installed | succeeded
+
     - name: Remove Zabbix packages
       apt:
         name:
+          - zabbix-server-mysql
+          - zabbix-frontend-php
           - zabbix-agent
         state: absent
         purge: yes
-        
+      when: zabbix_agent_installed | succeeded
+
     - name: Remove Zabbix apt sources list
       file:
         path: /etc/apt/sources.list.d/zabbix.list
         state: absent
+      when: zabbix_agent_installed | succeeded
 
     - name: Update apt repositories
       apt:
         update_cache: yes
-        
+      when: zabbix_agent_installed | succeeded
+
     - name: Remove Zabbix user
       user:
         name: zabbix
         state: absent
         remove: yes
+      when: zabbix_agent_installed | succeeded
 
     - name: Remove Zabbix group
       group:
         name: zabbix
         state: absent
+      when: zabbix_agent_installed | succeeded
 
-    - name: Remove Zabbix configuration files
+    - name: Remove Zabbix configuration directories
       file:
         path: "{{ item }}"
         state: absent
       loop:
         - /etc/zabbix/
         - /usr/share/zabbix/
+      when: zabbix_agent_installed | succeeded
