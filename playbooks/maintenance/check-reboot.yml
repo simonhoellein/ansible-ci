@@ -1,8 +1,8 @@
 ---
 - name: Check pending reboots on Ubuntu hosts
   hosts: all
-  gather_facts: no
-  become: yes
+  gather_facts: false
+  become: true
 
   vars:
     reboot_flag_file: /var/run/reboot-required
@@ -13,51 +13,91 @@
         path: "{{ reboot_flag_file }}"
       register: reboot_flag
 
-    - name: Set per-host reboot status
+    - name: Save per-host reboot status
       set_fact:
         reboot_required: "{{ reboot_flag.stat.exists | default(false) }}"
 
-    - name: Build table rows per host
+    - name: Collect host record for summary
       set_fact:
-        reboot_table_rows: >-
+        reboot_records: >-
           {{
-            (reboot_table_rows | default([]))
-            + [ { 'Host': inventory_hostname, 'RebootRequired': reboot_required | ternary('Yes', 'No') } ]
+            (reboot_records | default([])) +
+            [ { 'host': inventory_hostname, 'needs_reboot': reboot_required } ]
           }}
 
-    - name: Prepare Markdown table header and rows on controller
+    - name: Print ASCII table for ALL hosts
       run_once: true
       delegate_to: localhost
       vars:
-        header: "| Host | Reboot Required |"
-        sep:    "|------|-----------------|"
-        rows: >-
+        # Build a stable, sorted list from hostvars
+        all_rows: >-
           {{
             play_hosts
+            | sort
             | map('extract', hostvars)
-            | map('extract', 'reboot_required')
+            | map('combine', [{'__name__': item.key}])
             | list
           }}
-        # Build a sorted list of hosts with their status from hostvars
-        table_lines: >-
+        # Compute column widths
+        host_col_width: >-
           {{
-            play_hosts
-            | map('extract', hostvars)
-            | list
-            | map('combine', [{'name': item.key}] )
+            (
+              [ 'Host' | length ] +
+              (play_hosts | map('length') | list)
+            ) | max
+          }}
+        status_col_width: 14  # fits "Reboot Required"
+        sep: >-
+          {{
+            '+' ~ ('-' * (host_col_width + 2)) ~ '+' ~ ('-' * (status_col_width + 2)) ~ '+'
           }}
       debug:
         msg: >-
-          {{ header }}
+          {# header #}
           {{ sep }}
+          | {{ 'Host' | ljust(host_col_width) }} | {{ 'Reboot Required' | ljust(status_col_width) }} |
+          {{ sep }}
+          {# rows #}
           {%- for h in play_hosts | sort %}
-          | {{ h }} | {{ (hostvars[h].reboot_required | default(false)) | ternary('Yes','No') }} |
+          | {{ h | ljust(host_col_width) }} | {{ (hostvars[h].reboot_required | default(false)) | ternary('Yes','No') | ljust(status_col_width) }} |
           {%- endfor %}
+          {{ sep }}
 
-    - name: Print summary filtered to only hosts that require reboot (optional)
+    - name: Print ASCII table for ONLY hosts needing reboot
       run_once: true
       delegate_to: localhost
+      vars:
+        needing: >-
+          {{
+            play_hosts
+            | select('in', play_hosts)
+            | select('equalto', None)  # dummy to keep jinja happy; replaced by below block
+          }}
+        needing_hosts: >-
+          {{
+            play_hosts
+            | sort
+            | selectattr('___dummy', 'defined')  # dummy, replaced by below again
+          }}
       debug:
         msg: >-
-          The following table lists all hosts. "Yes" means a reboot is required.
-          Only "Yes" rows indicate action needed.
+          {%- set needing = [] -%}
+          {%- for h in play_hosts | sort -%}
+            {%- if hostvars[h].reboot_required | default(false) -%}
+              {%- set _ = needing.append(h) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- set host_col_width = ([ 'Host' | length ] + (needing | map('length') | list + [4])) | max -%}
+          {%- set status_col_width = 14 -%}
+          {%- set sep = '+' ~ ('-' * (host_col_width + 2)) ~ '+' ~ ('-' * (status_col_width + 2)) ~ '+' -%}
+          {{ sep }}
+          | {{ 'Host' | ljust(host_col_width) }} | {{ 'Reboot Required' | ljust(status_col_width) }} |
+          {{ sep }}
+          {%- if needing | length == 0 -%}
+          | {{ 'None' | ljust(host_col_width) }} | {{ 'No' | ljust(status_col_width) }} |
+          {%- else -%}
+            {%- for h in needing -%}
+          | {{ h | ljust(host_col_width) }} | {{ 'Yes' | ljust(status_col_width) }} |
+            {%- endfor -%}
+          {%- endif -%}
+          {{ sep }}
