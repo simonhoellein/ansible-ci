@@ -14,39 +14,39 @@
       set_fact:
         reboot_required: "{{ reboot_required_file.stat.exists }}"
 
-    - name: Print reboot summary
-      run_once: true
-      delegate_to: localhost
-      vars:
-        reboot_required_hosts: >-
-          {{
-            play_hosts
-            | selectattr('hostvars[.].reboot_required', 'defined')
-            | select('extract', hostvars)
-            | selectattr('reboot_required', 'equalto', true)
-            | map(attribute='inventory_hostname')
-            | list
+- name: Summarize reboot status
+  hosts: localhost
+  gather_facts: no
+  vars:
+    reboot_required_hosts: >-
+      {{
+        hostvars
+        | dict2items
+        | selectattr('value.reboot_required', 'defined')
+        | selectattr('value.reboot_required', 'equalto', true)
+        | map(attribute='key')
+        | list
+      }}
+    reboot_not_required_hosts: >-
+      {{
+        hostvars
+        | dict2items
+        | selectattr('value.reboot_required', 'defined')
+        | rejectattr('value.reboot_required', 'equalto', true)
+        | map(attribute='key')
+        | list
+      }}
+  tasks:
+    - name: Show hosts that need reboot
+      debug:
+        msg: >-
+          ⚠️  Reboot Required: {{
+            reboot_required_hosts | join(', ') if reboot_required_hosts else 'none'
           }}
-        reboot_not_required_hosts: >-
-          {{
-            play_hosts
-            | selectattr('hostvars[.].reboot_required', 'defined')
-            | select('extract', hostvars)
-            | rejectattr('reboot_required', 'equalto', true)
-            | map(attribute='inventory_hostname')
-            | list
-          }}
-      block:
-        - name: Show hosts that need reboot
-          debug:
-            msg: >-
-              ⚠️  Reboot Required: {{
-                reboot_required_hosts | join(', ') if reboot_required_hosts else 'none'
-              }}
 
-        - name: Show hosts that do NOT need reboot
-          debug:
-            msg: >-
-              ✅ No Reboot Required: {{
-                reboot_not_required_hosts | join(', ') if reboot_not_required_hosts else 'none'
-              }}
+    - name: Show hosts that do NOT need reboot
+      debug:
+        msg: >-
+          ✅ No Reboot Required: {{
+            reboot_not_required_hosts | join(', ') if reboot_not_required_hosts else 'none'
+          }}
