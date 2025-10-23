@@ -2,7 +2,6 @@
 - name: Check and reboot servers with pending reboots
   hosts: all
   become: yes
-  serial: 1
   gather_facts: no
   tasks:
 
@@ -24,22 +23,16 @@
           when: needs_reboot
 
         - name: Wait for server to go down
-          local_action: wait_for
-          delay: 20
-          timeout: 300
-          host: "{{ inventory_hostname }}"
-          port: 22
-          state: drained
-          delegate_to: localhost
+          pause:
+            seconds: 20
           when: needs_reboot
 
         - name: Wait for server to come back up
-          local_action: wait_for
-          delay: 10
-          timeout: 300
-          host: "{{ inventory_hostname }}"
-          port: 22
-          state: started
-          delegate_to: localhost
+          wait_for:
+            host: "{{ inventory_hostname }}"
+            port: 22
+            state: started
+            delay: 10
+            timeout: 300
           when: needs_reboot
       when: needs_reboot
