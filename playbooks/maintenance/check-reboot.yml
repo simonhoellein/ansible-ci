@@ -2,7 +2,6 @@
 - name: Check pending reboot on Ubuntu hosts
   hosts: all
   gather_facts: false
-  become: false
 
   tasks:
     - name: Check if /var/run/reboot-required exists
@@ -14,7 +13,43 @@
       ansible.builtin.set_fact:
         reboot_pending: "{{ reboot_flag.stat.exists | default(false) }}"
 
-    - name: Show reboot status
+    - name: Per-host status (optional for debugging)
       ansible.builtin.debug:
-        msg: >
-          Host {{ inventory_hostname }} reboot pending: {{ reboot_pending }}
+        msg: "Host {{ inventory_hostname }} reboot pending: {{ reboot_pending }}"
+      verbosity: 1
+
+- name: Summarize hosts with pending reboot
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Add host to pending list if reboot needed
+      ansible.builtin.add_host:
+        name: "{{ inventory_hostname }}"
+        groups: reboot_pending_group
+      when: reboot_pending | default(false)
+
+- name: Report summary
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Build list of pending reboot hosts
+      ansible.builtin.set_fact:
+        pending_hosts: "{{ groups['reboot_pending_group'] | default([]) }}"
+
+    - name: Show summary
+      ansible.builtin.debug:
+        msg: |
+          Reboot pending on the following hosts:
+          {% if pending_hosts | length > 0 %}
+          {% for h in pending_hosts %}
+          - {{ h }}
+          {% endfor %}
+          {% else %}
+          None. All hosts are clear.
+          {% endif %}
+
+    # Optional: Fail job if any host needs reboot (useful for gating)
+    # - name: Fail when any host needs a reboot
+    #   ansible.builtin.fail:
+    #     msg: "One or more hosts require a reboot: {{ pending_hosts | join(', ') }}"
+    #   when: pending_hosts | length > 0
