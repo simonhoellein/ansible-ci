@@ -1,0 +1,9 @@
+---
+roles:
+  - name: newrelic.newrelic_install
+  
+collections:
+  - name: ansible.windows
+    source: https://galaxy.ansible.com
+  - name: ansible.utils
+    source: https://galaxy.ansible.com

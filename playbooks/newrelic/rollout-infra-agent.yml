@@ -1,0 +1,78 @@
+---
+- name: Update New Relic Infra Agent and Apply Configuration
+  hosts: all
+  become: true
+  vars:
+    newrelic_config_repo: "git@github.com:simonhoellein/newrelic-infra.git"
+    newrelic_config_branch: "main"
+    newrelic_config_local_path: "/tmp/newrelic-config"
+    newrelic_package_name: newrelic-infra
+
+  tasks:
+
+    - name: Ensure required packages are installed
+      package:
+        name:
+          - git
+          - rsync
+        state: present
+      tags: packages
+
+    - name: Delete any existing temp config checkout
+      file:
+        path: "{{ newrelic_config_local_path }}"
+        state: absent
+      tags: config
+
+    - name: Clone New Relic config repo (SSH-based)
+      git:
+        repo: "{{ newrelic_config_repo }}"
+        version: "{{ newrelic_config_branch }}"
+        dest: "{{ newrelic_config_local_path }}"
+        accept_hostkey: yes
+        key_file: "{{ lookup('env', 'HOME') + '/.ssh/id_rsa' }}"
+      tags: config
+
+    - name: Update newrelic-infra package
+      apt:
+        name: "{{ newrelic_package_name }}"
+        state: latest
+        update_cache: yes
+        cache_valid_time: 3600
+      tags: update
+
+    - name: Deploy main config file (newrelic-infra.yml)
+      copy:
+        src: "{{ newrelic_config_local_path }}/newrelic-infra.yml"
+        dest: /etc/newrelic-infra.yml
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart newrelic-infra
+      tags: config
+
+    - name: Clean existing New Relic dynamic config directory
+      file:
+        path: /etc/newrelic-infra
+        state: directory
+        recurse: yes
+        mode: '0755'
+        owner: root
+        group: root
+      tags: config
+
+    - name: Sync all dynamic configs to /etc/newrelic-infra/
+      synchronize:
+        src: "{{ newrelic_config_local_path }}/config/"
+        dest: /etc/newrelic-infra/
+        recursive: yes
+        delete: yes
+      delegate_to: localhost
+      notify: Restart newrelic-infra
+      tags: config
+
+  handlers:
+    - name: Restart newrelic-infra
+      service:
+        name: newrelic-infra
+        state: restarted
